@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>aiaha-proxy · 实时监控面板</title>
+<style>
+  :root {
+    --bg0:#070b16; --bg1:#0b1226; --bg2:#0e1730;
+    --card:rgba(255,255,255,.045); --card-brd:rgba(255,255,255,.09);
+    --txt:#e7ecf5; --txt-dim:#9aa6bd; --txt-mut:#66718c;
+    --pri:#6366f1; --pri2:#22d3ee; --ok:#34d399; --warn:#fbbf24; --bad:#f87171; --info:#60a5fa;
+    --shadow:0 10px 40px -12px rgba(0,0,0,.55);
+    --r:16px;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; }
+  body {
+    font-family:"Segoe UI",system-ui,-apple-system,"Microsoft YaHei",sans-serif;
+    color:var(--txt); min-height:100vh; -webkit-font-smoothing:antialiased;
+    background:
+      radial-gradient(1000px 600px at 12% -8%, rgba(99,102,241,.16), transparent 60%),
+      radial-gradient(900px 620px at 108% 4%, rgba(34,211,238,.12), transparent 55%),
+      linear-gradient(160deg,var(--bg0),var(--bg1) 45%,var(--bg2));
+  }
+  .wrap { max-width:1320px; margin:0 auto; padding:20px 22px 60px; }
+  a { color:inherit; }
+
+  /* 顶栏 */
+  .topbar { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:22px; }
+  .brand { display:flex; align-items:center; gap:12px; }
+  .logo { width:40px; height:40px; border-radius:11px; display:grid; place-items:center;
+    background:linear-gradient(135deg,var(--pri),var(--pri2)); box-shadow:0 6px 20px -6px var(--pri); font-size:20px; }
+  .brand h1 { font-size:18px; margin:0; letter-spacing:.3px; }
+  .brand .sub { font-size:12px; color:var(--txt-mut); margin-top:2px; }
+  .topbar .spacer { flex:1; }
+  .pill { display:inline-flex; align-items:center; gap:7px; padding:7px 13px; border-radius:999px;
+    background:var(--card); border:1px solid var(--card-brd); font-size:13px; color:var(--txt-dim); }
+  .live-dot { width:8px; height:8px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 0 rgba(52,211,153,.6); animation:pulse 2s infinite; }
+  .live-dot.bad { background:var(--bad); animation:none; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(52,211,153,.55)} 70%{box-shadow:0 0 0 9px rgba(52,211,153,0)} 100%{box-shadow:0 0 0 0 rgba(52,211,153,0)} }
+  .btn { cursor:pointer; padding:7px 13px; border-radius:10px; background:var(--card); border:1px solid var(--card-brd);
+    color:var(--txt-dim); font-size:13px; transition:.18s; user-select:none; }
+  .btn:hover { color:var(--txt); border-color:rgba(255,255,255,.22); transform:translateY(-1px); }
+  .btn.on { color:#fff; background:linear-gradient(135deg,var(--pri),var(--pri2)); border-color:transparent; }
+
+  /* 卡片通用 */
+  .card { background:var(--card); border:1px solid var(--card-brd); border-radius:var(--r);
+    backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px); box-shadow:var(--shadow); }
+  .card:hover { border-color:rgba(255,255,255,.16); }
+  .card-h { display:flex; align-items:center; justify-content:space-between; padding:15px 18px 0; }
+  .card-h .t { font-size:13px; color:var(--txt-dim); letter-spacing:.4px; }
+
+  /* KPI */
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; margin-bottom:16px; }
+  .kpi { padding:18px; position:relative; overflow:hidden; transition:transform .18s; }
+  .kpi:hover { transform:translateY(-3px); }
+  .kpi .ic { position:absolute; right:14px; top:14px; width:38px; height:38px; border-radius:11px; display:grid; place-items:center; font-size:19px; opacity:.92; }
+  .kpi .label { font-size:12.5px; color:var(--txt-dim); }
+  .kpi .val { font-size:30px; font-weight:700; margin-top:9px; font-variant-numeric:tabular-nums; letter-spacing:.5px; line-height:1.1; }
+  .kpi .foot { font-size:12px; color:var(--txt-mut); margin-top:7px; display:flex; align-items:center; gap:6px; }
+  .up{color:var(--ok);} .down{color:var(--bad);}
+  .ic.i-pri{background:rgba(99,102,241,.16);color:#a5b4fc;} .ic.i-ok{background:rgba(52,211,153,.15);color:var(--ok);}
+  .ic.i-warn{background:rgba(251,191,36,.15);color:var(--warn);} .ic.i-info{background:rgba(96,165,250,.15);color:var(--info);}
+
+  /* 图表区 */
+  .charts { display:grid; grid-template-columns:1.6fr 1fr 1.2fr; gap:16px; margin-bottom:16px; }
+  @media (max-width:1000px){ .charts{grid-template-columns:1fr;} }
+  .chart-body { padding:16px 18px 18px; }
+  .spark-wrap { position:relative; }
+  svg.spark { width:100%; height:150px; display:block; overflow:visible; }
+  .axis { font-size:10px; fill:var(--txt-mut); }
+
+  /* 环形图 */
+  .donut-row { display:flex; align-items:center; gap:18px; padding:14px 18px 20px; }
+  .donut { width:128px; height:128px; border-radius:50%; flex:none; position:relative; }
+  .donut::after { content:""; position:absolute; inset:16px; border-radius:50%; background:var(--bg1); box-shadow:inset 0 0 0 1px rgba(255,255,255,.05); }
+  .donut .center { position:absolute; inset:0; display:grid; place-items:center; z-index:2; text-align:center; }
+  .donut .center b { font-size:24px; font-variant-numeric:tabular-nums; }
+  .donut .center span { font-size:11px; color:var(--txt-mut); display:block; }
+  .legend { display:flex; flex-direction:column; gap:9px; font-size:13px; flex:1; }
+  .legend .row { display:flex; align-items:center; gap:9px; }
+  .legend .dot { width:10px; height:10px; border-radius:3px; flex:none; }
+  .legend .n { margin-left:auto; font-variant-numeric:tabular-nums; color:var(--txt-dim); }
+
+  /* 柱状(Top 成功率) */
+  .bars { padding:14px 18px 18px; display:flex; flex-direction:column; gap:11px; }
+  .bar-row { font-size:12.5px; }
+  .bar-row .lab { display:flex; justify-content:space-between; margin-bottom:5px; color:var(--txt-dim); }
+  .bar-row .lab .pct { font-variant-numeric:tabular-nums; color:var(--txt); font-weight:600; }
+  .track { height:8px; border-radius:6px; background:rgba(255,255,255,.06); overflow:hidden; }
+  .fill { height:100%; border-radius:6px; transition:width .6s cubic-bezier(.2,.7,.2,1); }
+
+  /* 模型表 */
+  .panel { margin-bottom:16px; }
+  .panel-h { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:15px 18px; }
+  .panel-h .t { font-size:14px; font-weight:600; }
+  .panel-h .spacer{flex:1;}
+  .search { background:rgba(255,255,255,.05); border:1px solid var(--card-brd); border-radius:10px;
+    padding:8px 12px; color:var(--txt); font-size:13px; min-width:200px; outline:none; }
+  .search:focus { border-color:var(--pri); }
+  .chips { display:flex; gap:7px; flex-wrap:wrap; }
+  .chip { cursor:pointer; font-size:12px; padding:5px 11px; border-radius:999px; border:1px solid var(--card-brd);
+    background:rgba(255,255,255,.03); color:var(--txt-dim); transition:.15s; }
+  .chip.on { color:#fff; border-color:transparent; }
+  .chip.on.smooth{background:rgba(52,211,153,.9);} .chip.on.crowded{background:rgba(251,191,36,.9);}
+  .chip.on.abnormal{background:rgba(248,113,113,.9);} .chip.on.all{background:linear-gradient(135deg,var(--pri),var(--pri2));}
+  .tbl-scroll { max-height:420px; overflow:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  thead th { position:sticky; top:0; background:#0e1730; text-align:left;
+    padding:10px 18px; font-size:11.5px; color:var(--txt-mut); font-weight:600; letter-spacing:.4px; cursor:pointer; white-space:nowrap; }
+  thead th:hover{color:var(--txt-dim);}
+  tbody td { padding:10px 18px; border-top:1px solid rgba(255,255,255,.045); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  tbody tr:hover { background:rgba(255,255,255,.03); }
+  .mono { font-family:"Cascadia Code",Consolas,monospace; }
+  .badge { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; padding:3px 9px; border-radius:999px; font-weight:600; white-space:nowrap; }
+  .b-smooth{background:rgba(52,211,153,.14);color:var(--ok);} .b-crowded{background:rgba(251,191,36,.14);color:var(--warn);}
+  .b-abnormal{background:rgba(248,113,113,.14);color:var(--bad);} .b-idle{background:rgba(96,165,250,.14);color:var(--info);} .b-other{background:rgba(255,255,255,.08);color:var(--txt-dim);}
+  .succ-mini { display:inline-block; width:52px; height:6px; border-radius:4px; background:rgba(255,255,255,.08); overflow:hidden; vertical-align:middle; margin-left:8px; }
+  .succ-mini i { display:block; height:100%; }
+
+  /* 两列下部 */
+  .lower { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:900px){ .lower{grid-template-columns:1fr;} }
+  .recent { padding:6px 0 10px; max-height:320px; overflow:auto; }
+  .recent .item { display:flex; align-items:center; gap:11px; padding:10px 18px; border-top:1px solid rgba(255,255,255,.045); font-size:13px; }
+  .recent .item:first-child{border-top:none;}
+  .rdot{width:8px;height:8px;border-radius:50%;flex:none;} .rdot.ok{background:var(--ok);} .rdot.err{background:var(--bad);}
+  .recent .m{color:var(--txt-dim);} .recent .m b{color:var(--txt);font-weight:600;}
+  .recent .meta{margin-left:auto;color:var(--txt-mut);font-size:12px;font-variant-numeric:tabular-nums;}
+  .info-rows{padding:6px 18px 16px;font-size:13px;}
+  .info-rows .r{display:flex;justify-content:space-between;padding:9px 0;border-top:1px solid rgba(255,255,255,.045);}
+  .info-rows .r:first-child{border-top:none;} .info-rows .k{color:var(--txt-mut);} .info-rows .v{color:var(--txt-dim);font-variant-numeric:tabular-nums;text-align:right;}
+  .empty{padding:26px;text-align:center;color:var(--txt-mut);font-size:13px;}
+  .foot-note{margin-top:26px;text-align:center;color:var(--txt-mut);font-size:12px;}
+  ::-webkit-scrollbar{width:9px;height:9px;} ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;} ::-webkit-scrollbar-track{background:transparent;}
+  /* 设置弹窗 */
+  .modal-mask{ position:fixed; inset:0; background:rgba(4,7,15,.66); backdrop-filter:blur(4px); display:none; align-items:flex-start; justify-content:center; z-index:50; overflow:auto; padding:40px 16px; }
+  .modal-mask.show{ display:flex; }
+  .modal{ width:100%; max-width:560px; background:linear-gradient(180deg,rgba(20,28,52,.98),rgba(12,18,38,.98)); border:1px solid var(--card-brd); border-radius:18px; box-shadow:var(--shadow); animation:pop .18s ease; }
+  @keyframes pop{ from{transform:translateY(10px) scale(.98);opacity:0;} to{transform:none;opacity:1;} }
+  .modal-h{ display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.06); }
+  .modal-h h2{ font-size:16px; margin:0; }
+  .modal-x{ cursor:pointer; color:var(--txt-mut); font-size:20px; line-height:1; }
+  .modal-x:hover{ color:var(--txt); }
+  .modal-b{ padding:18px 22px; max-height:64vh; overflow:auto; }
+  .fg{ margin-bottom:14px; } .fg > label{ display:block; font-size:12.5px; color:var(--txt-dim); margin-bottom:6px; }
+  .fg input[type=text],.fg input[type=password],.fg input[type=number],.fg textarea{ width:100%; background:rgba(255,255,255,.05); border:1px solid var(--card-brd); border-radius:10px; padding:9px 12px; color:var(--txt); font-size:13px; outline:none; font-family:inherit; }
+  .fg input:focus,.fg textarea:focus{ border-color:var(--pri); }
+  .fg textarea{ min-height:60px; resize:vertical; }
+  .fg .hint{ font-size:11.5px; color:var(--txt-mut); margin-top:5px; }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .switches{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .sw{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--txt-dim); cursor:pointer; }
+  .sw input{ width:16px; height:16px; accent-color:var(--pri); }
+  .modal-f{ display:flex; align-items:center; gap:12px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.06); }
+  .modal-f .msg{ font-size:12.5px; flex:1; color:var(--txt-mut); }
+  .btn-primary{ cursor:pointer; padding:9px 18px; border-radius:10px; border:none; color:#fff; font-size:13px; font-weight:600; background:linear-gradient(135deg,var(--pri),var(--pri2)); }
+  .btn-primary:disabled{ opacity:.6; cursor:default; }
+  .sec-title{ font-size:11px; letter-spacing:.6px; color:var(--txt-mut); margin:16px 0 10px; text-transform:uppercase; }
+  .sec-title:first-child{margin-top:0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">🛰️</div>
+      <div><h1>aiaha-proxy 监控面板</h1><div class="sub" id="subTitle">实时状态 · 数据可视化</div></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill"><span class="live-dot" id="liveDot"></span><span id="liveText">连接中…</span></div>
+    <div class="pill" id="updPill">更新于 --</div>
+    <div class="btn" id="cfgBtn">⚙ 设置</div>
+    <div class="btn on" id="autoBtn">⟳ 自动刷新</div>
+    <div class="btn" id="refreshBtn">立即刷新</div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="charts">
+    <div class="card">
+      <div class="card-h"><span class="t">积分余额趋势（消耗曲线）</span><span class="t" id="ptsRange" style="color:var(--txt-mut)"></span></div>
+      <div class="chart-body spark-wrap"><svg class="spark" id="spark" viewBox="0 0 600 150" preserveAspectRatio="none"></svg></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><span class="t">模型状态分布</span></div>
+      <div class="donut-row">
+        <div class="donut" id="donut"><div class="center"><b id="donutTotal">0</b><span>模型总数</span></div></div>
+        <div class="legend" id="donutLegend"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><span class="t">Top 模型 · 成功率</span></div>
+      <div class="bars" id="topBars"></div>
+    </div>
+  </div>
+
+  <div class="card panel">
+    <div class="panel-h">
+      <span class="t">模型列表</span>
+      <span class="badge b-other" id="modelCount">0</span>
+      <div class="spacer"></div>
+      <div class="chips" id="statusChips">
+        <span class="chip on all" data-s="all">全部</span>
+        <span class="chip smooth" data-s="smooth">通畅</span>
+        <span class="chip crowded" data-s="crowded">拥挤</span>
+        <span class="chip abnormal" data-s="abnormal">异常</span>
+      </div>
+      <input class="search" id="search" placeholder="搜索 provider / 模型名…" />
+    </div>
+    <div class="tbl-scroll">
+      <table>
+        <thead><tr>
+          <th data-k="provider">供应商 (Provider)</th>
+          <th data-k="model">模型</th>
+          <th data-k="status">状态</th>
+          <th data-k="success">成功率 ▾</th>
+          <th data-k="price">价格系数</th>
+        </tr></thead>
+        <tbody id="modelRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="lower">
+    <div class="card">
+      <div class="card-h"><span class="t">最近请求</span><span class="t" id="reqSummary" style="color:var(--txt-mut)"></span></div>
+      <div class="recent" id="recent"></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><span class="t">服务信息</span></div>
+      <div class="info-rows" id="svcInfo"></div>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="cfgModal">
+    <div class="modal">
+      <div class="modal-h"><h2>⚙ 设置</h2><span class="modal-x" id="cfgClose">✕</span></div>
+      <div class="modal-b">
+        <div class="sec-title">账号（用于 token 自动续期）</div>
+        <div class="fg"><label>邮箱</label><input type="text" id="f_email" placeholder="you@example.com" /></div>
+        <div class="fg"><label>密码</label><input type="password" id="f_password" placeholder="留空 = 不修改" /><div class="hint" id="pwdHint"></div></div>
+        <div class="sec-title">连接</div>
+        <div class="fg">
+          <label>角色卡链接 / App ID</label>
+          <input type="text" id="f_appid" placeholder="粘贴角色卡链接，或直接填 app_id (UUID)" />
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;"><button type="button" class="btn" id="f_validate" style="padding:6px 12px;">验证角色卡</button><span class="hint" id="appidResult"></span></div>
+          <div class="hint" style="margin-top:8px;line-height:1.75;">· <b>空白卡</b>（推荐）：在风月“创作”新建、人设/世界书全空的角色 → 纯 API，人设完全由酒馆本地控制。<br>· <b>完整设定卡</b>：任意 aiaha 角色卡链接 → 会叠加该卡在服务器端的人设/思维链格式。<br>· 支持粘贴形如 <span class="mono">aiaha.xyz/zh/explore/installed/&lt;id&gt;</span> 的链接。</div>
+        </div>
+        <div class="row2"><div class="fg"><label>默认模型 provider</label><input type="text" id="f_mprov" /></div><div class="fg"><label>默认模型 name</label><input type="text" id="f_mname" /></div></div>
+        <div class="fg"><label>镜像域名（每行一个）</label><textarea id="f_domains"></textarea></div>
+        <div class="row2"><div class="fg"><label>端口</label><input type="number" id="f_port" /></div><div class="fg"><label>本地 API Key（可空）</label><input type="text" id="f_key" placeholder="留空=本机免密" /></div></div>
+        <div class="sec-title">开关</div>
+        <div class="switches">
+          <label class="sw"><input type="checkbox" id="f_autologin" /> 自动登录续期</label>
+          <label class="sw"><input type="checkbox" id="f_autofb" /> 模型自动回退</label>
+          <label class="sw"><input type="checkbox" id="f_strip" /> 去除思维链</label>
+          <label class="sw"><input type="checkbox" id="f_hideab" /> 隐藏异常模型</label>
+          <label class="sw"><input type="checkbox" id="f_openbrowser" /> 启动开面板</label>
+          <label class="sw"><input type="checkbox" id="f_verify" /> 保存时验证账号</label>
+        </div>
+      </div>
+      <div class="modal-f"><span class="msg" id="cfgMsg"></span><button class="btn-primary" id="cfgSave">保存设置</button></div>
+    </div>
+  </div>
+
+  <div class="foot-note">aiaha-proxy · 数据来自本地代理真实接口 · 仅本机可访问</div>
+</div>
+<script>
+const el = (id)=>document.getElementById(id);
+let auto=true, timer=null, sortKey='success', sortDir=-1, filterStatus='all', term='', lastAll=[], firstPoints=null;
+const nf = new Intl.NumberFormat('en-US');
+const fmt = (n)=> (n==null||isNaN(n))?'--':nf.format(Math.round(n));
+function dur(s){ s=Math.max(0,s|0); const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60); if(d)return d+'天'+h+'时'; if(h)return h+'时'+m+'分'; return m+'分'+(s%60)+'秒'; }
+function rel(t){ const s=Math.floor((Date.now()-t)/1000); if(s<60)return s+'秒前'; const m=Math.floor(s/60); if(m<60)return m+'分前'; return Math.floor(m/60)+'时前'; }
+function hhmmss(t){ const d=new Date(t),p=(x)=>String(x).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
+const STATUS = { smooth:['通畅','b-smooth','#34d399'], crowded:['拥挤','b-crowded','#fbbf24'], abnormal:['异常','b-abnormal','#f87171'], idle:['空闲','b-idle','#60a5fa'], normal:['正常','b-smooth','#34d399'], other:['其他','b-other','#8b93a7'] };
+const stMeta = (s)=> STATUS[s]||STATUS.other;
+
+async function fetchStats(){
+  try{ const r=await fetch('/api/stats',{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status); const d=await r.json(); live(true); render(d); }
+  catch(e){ live(false,e.message); }
+}
+function live(ok,msg){
+  el('liveDot').className='live-dot'+(ok?'':' bad');
+  el('liveText').textContent=ok?'运行中':'连接失败';
+  el('updPill').textContent = ok?('更新于 '+hhmmss(Date.now())):(msg||'离线');
+}
+let lastSeriesLen=-1, lastModelsSig='', lastRecentSig='';
+function render(d){
+  renderKpis(d);
+  const modalOpen = modal.classList.contains('show');
+  const sl=(d.pointsSeries||[]).length;
+  if(sl!==lastSeriesLen){ renderSpark(d.pointsSeries||[]); lastSeriesLen=sl; }
+  lastAll=d.models.all||[]; el('modelCount').textContent=d.models.total+' 个';
+  const ms=d.models, bs=ms.byStatus||{};
+  const sig=ms.total+':'+(bs.smooth||0)+','+(bs.crowded||0)+','+(bs.abnormal||0)+':'+ms.avgSuccess;
+  if(sig!==lastModelsSig && !modalOpen){ renderDonut(bs,ms.total); renderBars(ms.top||[]); renderModels(); lastModelsSig=sig; }
+  const rsig=(d.traffic.recent||[]).length+':'+d.traffic.requests+':'+d.traffic.errors;
+  if(rsig!==lastRecentSig){ renderRecent(d.traffic.recent||[], d.traffic); lastRecentSig=rsig; }
+  renderSvc(d);
+}
+function kpi(ic,cls,label,val,foot){ return '<div class="card kpi"><div class="ic '+cls+'">'+ic+'</div><div class="label">'+label+'</div><div class="val">'+val+'</div><div class="foot">'+(foot||'')+'</div></div>'; }
+function renderKpis(d){
+  const upt=dur(d.service.uptimeSec), pts=d.account.points, tk=d.token;
+  if(firstPoints==null && pts!=null) firstPoints=pts;
+  let delta='采样中…';
+  if(pts!=null && firstPoints!=null){ const df=pts-firstPoints; delta = df===0?'本次无变化':('<span class="'+(df<0?'down':'up')+'">'+(df<0?'▼':'▲')+' '+fmt(Math.abs(df))+'</span> 自打开'); }
+  let tkVal='--', tkFoot='未知';
+  if(tk.daysLeft!=null){ tkVal=tk.expired?'已过期':tk.daysLeft.toFixed(1)+' 天'; tkFoot=tk.autoLogin?'<span class="up">● 自动续期已开</span>':'手动刷新模式'; }
+  const tkIc=(tk.expired||(tk.daysLeft!=null&&tk.daysLeft<3))?'i-warn':'i-ok';
+  el('kpis').innerHTML =
+    kpi('🟢','i-ok','服务状态', d.service.status==='ok'?'运行中':'异常', '已运行 '+upt) +
+    kpi('💎','i-info','积分余额', fmt(pts), delta) +
+    kpi('🔑',tkIc,'Token 有效期', tkVal, tkFoot) +
+    kpi('📡','i-pri','请求总数 / 字符', fmt(d.traffic.requests), '<span class="'+(d.traffic.errors?'down':'')+'">'+d.traffic.errors+' 错误</span> · '+fmt(d.traffic.chars)+' 字符');
+}
+function renderSpark(series){
+  const svg=el('spark'), W=600,H=150,pad=10;
+  if(!series||series.length<2){ svg.innerHTML='<text x="300" y="78" text-anchor="middle" class="axis" style="font-size:13px">积分采样中，约每分钟一个数据点…</text>'; el('ptsRange').textContent=''; return; }
+  const ys=series.map(p=>p.points); let min=Math.min(...ys),max=Math.max(...ys); if(min===max){min-=1;max+=1;} const rng=max-min;
+  const X=i=> pad + i*(W-2*pad)/(series.length-1); const Y=v=> pad + (1-(v-min)/rng)*(H-2*pad);
+  let line=''; series.forEach((p,i)=>{ line+=(i?'L':'M')+X(i).toFixed(1)+' '+Y(p.points).toFixed(1)+' '; });
+  const area='M'+X(0).toFixed(1)+' '+(H-pad).toFixed(1)+' '+series.map((p,i)=>'L'+X(i).toFixed(1)+' '+Y(p.points).toFixed(1)).join(' ')+' L'+X(series.length-1).toFixed(1)+' '+(H-pad).toFixed(1)+' Z';
+  const lx=X(series.length-1).toFixed(1), ly=Y(ys[ys.length-1]).toFixed(1);
+  svg.innerHTML='<defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#22d3ee" stop-opacity=".35"/><stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/></linearGradient></defs>'+
+    '<path d="'+area+'" fill="url(#sg)"/>'+
+    '<path d="'+line+'" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'+
+    '<circle cx="'+lx+'" cy="'+ly+'" r="7" fill="#22d3ee" opacity=".18"/><circle cx="'+lx+'" cy="'+ly+'" r="3.5" fill="#22d3ee"/>'+
+    '<text x="'+pad+'" y="12" class="axis">'+fmt(max)+'</text><text x="'+pad+'" y="'+(H-2)+'" class="axis">'+fmt(min)+'</text>';
+  el('ptsRange').textContent = hhmmss(series[0].t)+' → '+hhmmss(series[series.length-1].t)+' · '+series.length+' 点';
+}
+function renderDonut(by,total){
+  const order=[['smooth','#34d399'],['crowded','#fbbf24'],['abnormal','#f87171'],['idle','#60a5fa'],['other','#8b93a7']];
+  let acc=0,stops=[]; const t=total||0;
+  order.forEach(([k,c])=>{ const v=by[k]||0; if(v<=0)return; stops.push(c+' '+(acc/t*360)+'deg '+((acc+v)/t*360)+'deg'); acc+=v; });
+  el('donut').style.background = t?('conic-gradient('+stops.join(',')+')'):'conic-gradient(#2a3350 0 360deg)';
+  el('donutTotal').textContent=t;
+  el('donutLegend').innerHTML = order.filter(([k])=>(by[k]||0)>0).map(([k,c])=>{ const v=by[k]||0,pct=t?Math.round(v/t*100):0; return '<div class="row"><span class="dot" style="background:'+c+'"></span>'+stMeta(k)[0]+'<span class="n">'+v+' · '+pct+'%</span></div>'; }).join('')||'<div class="empty">无数据</div>';
+}
+function renderBars(top){
+  el('topBars').innerHTML = (top.slice(0,7).map(m=>{ const c=stMeta(m.status)[2]; const pct=(m.success||0).toFixed(m.success>=99.95?0:1); return '<div class="bar-row"><div class="lab"><span class="mono" title="'+m.provider+'/'+m.model+'">'+m.model+'</span><span class="pct">'+pct+'%</span></div><div class="track"><div class="fill" style="width:'+Math.max(2,m.success||0)+'%;background:linear-gradient(90deg,'+c+'aa,'+c+')"></div></div></div>'; }).join(''))||'<div class="empty">暂无数据</div>';
+}
+function renderModels(){
+  const sc=document.querySelector('.tbl-scroll'); const st=sc?sc.scrollTop:0;
+  let rows=lastAll.filter(m=>(filterStatus==='all'||m.status===filterStatus)&&(!term||(m.provider+'/'+m.model).toLowerCase().includes(term)));
+  rows.sort((a,b)=>{ let x=a[sortKey],y=b[sortKey]; if(typeof x==='string'){x=x.toLowerCase();y=(y||'').toLowerCase(); return x<y?-sortDir:x>y?sortDir:0;} return ((x||0)-(y||0))*sortDir; });
+  el('modelRows').innerHTML = rows.map(m=>{ const meta=stMeta(m.status),c=meta[2],pct=(m.success||0); return '<tr><td class="mono">'+m.provider+'</td><td class="mono">'+m.model+'</td><td><span class="badge '+meta[1]+'">'+meta[0]+'</span></td><td>'+pct.toFixed(1)+'%<span class="succ-mini"><i style="width:'+Math.max(2,pct)+'%;background:'+c+'"></i></span></td><td>x'+(m.price||0).toFixed(4)+'</td></tr>'; }).join('')||'<tr><td colspan="5" class="empty">无匹配模型</td></tr>';
+  if(sc) sc.scrollTop=st;
+}
+function renderRecent(list,tr){
+  el('reqSummary').textContent='共 '+tr.requests+' 次 · '+tr.errors+' 错误';
+  el('recent').innerHTML = list.length?list.map(r=>'<div class="item"><span class="rdot '+(r.ok?'ok':'err')+'"></span><span class="m"><b>'+r.model+'</b></span><span class="meta">'+r.chars+' 字 · '+rel(r.t)+'</span></div>').join(''):'<div class="empty">还没有对话请求</div>';
+}
+function renderSvc(d){
+  const s=d.service; const rows=[['服务状态',s.status==='ok'?'🟢 正常':'🔴 异常'],['当前模型',d.model.current],['活动域名',s.activeDomain],['备用镜像',(s.domains||[]).filter(x=>x!==s.activeDomain).join(' 、 ')||'无'],['空白App',s.appId],['监听',('127.0.0.1:'+s.port)],['本地密钥',s.localKeyEnabled?'已启用':'未启用(本机直连)'],['登录账号',d.account.email||'未配置'],['自动续期',d.token.autoLogin?'✅ 已开启':'❌ 未开启'],['模型平均成功率',d.models.avgSuccess!=null?d.models.avgSuccess+'%':'--']];
+  el('svcInfo').innerHTML = rows.map(r=>'<div class="r"><span class="k">'+r[0]+'</span><span class="v">'+r[1]+'</span></div>').join('');
+}
+el('search').addEventListener('input',e=>{ term=e.target.value.trim().toLowerCase(); renderModels(); });
+document.querySelectorAll('#statusChips .chip').forEach(c=> c.addEventListener('click',()=>{ document.querySelectorAll('#statusChips .chip').forEach(x=>x.classList.remove('on')); c.classList.add('on'); filterStatus=c.dataset.s; renderModels(); }));
+document.querySelectorAll('thead th').forEach(th=> th.addEventListener('click',()=>{ const k=th.dataset.k; if(sortKey===k) sortDir*=-1; else {sortKey=k; sortDir=(k==='provider'||k==='model')?1:-1;} document.querySelectorAll('thead th').forEach(x=>x.textContent=x.textContent.replace(/[ \u25be\u25b4]+$/,'')); th.textContent=th.textContent+(sortDir<0?' \u25be':' \u25b4'); renderModels(); }));
+el('autoBtn').addEventListener('click',()=>{ auto=!auto; el('autoBtn').classList.toggle('on',auto); el('autoBtn').textContent=auto?'⟳ 自动刷新':'▷ 已暂停'; auto?start():stop(); });
+el('refreshBtn').addEventListener('click',fetchStats);
+function start(){ stop(); timer=setInterval(fetchStats,3000); }
+function stop(){ if(timer)clearInterval(timer); timer=null; }
+const modal=el('cfgModal');
+function openCfg(){ loadCfg(); modal.classList.add('show'); }
+function closeCfg(){ modal.classList.remove('show'); }
+async function loadCfg(){
+  el('cfgMsg').style.color='var(--txt-mut)'; el('cfgMsg').textContent='加载中…';
+  try{
+    const c=await (await fetch('/api/config',{cache:'no-store'})).json();
+    el('f_email').value=c.email||''; el('f_password').value='';
+    el('pwdHint').textContent = c.hasPassword?'已设置密码（留空则保持不变）':'尚未设置密码';
+    el('f_appid').value=c.app_id||''; el('f_mprov').value=(c.model&&c.model.provider)||''; el('f_mname').value=(c.model&&c.model.name)||'';
+    el('f_domains').value=(c.domains||[]).join('\n'); el('f_port').value=c.port||8787; el('f_key').value=c.local_api_key||'';
+    el('f_autologin').checked=!!c.auto_login; el('f_autofb').checked=!!c.auto_fallback; el('f_strip').checked=!!c.strip_reasoning; el('f_hideab').checked=!!c.hide_abnormal; el('f_openbrowser').checked=!!c.open_browser; el('f_verify').checked=false;
+    const tk=c.tokenExpired?'已过期':(c.tokenDaysLeft!=null?c.tokenDaysLeft.toFixed(1)+' 天':'未设置');
+    el('cfgMsg').textContent='当前 token：'+tk;
+  }catch(e){ el('cfgMsg').style.color='var(--bad)'; el('cfgMsg').textContent='加载失败: '+e.message; }
+}
+async function saveCfg(){
+  const btn=el('cfgSave'); btn.disabled=true; el('cfgMsg').style.color='var(--txt-mut)'; el('cfgMsg').textContent='保存中…';
+  const body={ email:el('f_email').value, app_id:el('f_appid').value, port:+el('f_port').value, local_api_key:el('f_key').value,
+    model:{provider:el('f_mprov').value,name:el('f_mname').value},
+    domains:el('f_domains').value.split('\n').map(s=>s.trim()).filter(Boolean),
+    auto_login:el('f_autologin').checked, auto_fallback:el('f_autofb').checked, strip_reasoning:el('f_strip').checked,
+    hide_abnormal:el('f_hideab').checked, open_browser:el('f_openbrowser').checked, verify:el('f_verify').checked };
+  const pw=el('f_password').value; if(pw) body.password=pw;
+  try{
+    const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json();
+    if(r.ok&&j.ok){ el('cfgMsg').style.color='var(--ok)'; el('cfgMsg').textContent='✅ '+(j.note||'已保存')+(j.verified?'（账号验证通过）':''); el('f_password').value=''; }
+    else { el('cfgMsg').style.color='var(--bad)'; el('cfgMsg').textContent='❌ '+(j.message||'保存失败'); }
+  }catch(e){ el('cfgMsg').style.color='var(--bad)'; el('cfgMsg').textContent='❌ '+e.message; }
+  btn.disabled=false;
+}
+el('cfgBtn').addEventListener('click',openCfg);
+el('cfgClose').addEventListener('click',closeCfg);
+el('cfgSave').addEventListener('click',saveCfg);
+async function validateCard(){
+  const v=el('f_appid').value.trim(), out=el('appidResult');
+  if(!v){ out.style.color='var(--txt-mut)'; out.textContent='请先输入链接或 app_id'; return; }
+  out.style.color='var(--txt-mut)'; out.textContent='验证中…';
+  try{ const j=await (await fetch('/api/validate-app?link='+encodeURIComponent(v),{cache:'no-store'})).json();
+    if(j.valid){ out.style.color='var(--ok)'; out.textContent='✅ 有效 · '+(j.appId||''); }
+    else { out.style.color='var(--bad)'; out.textContent='❌ '+(j.message||'无效'); }
+  }catch(e){ out.style.color='var(--bad)'; out.textContent='❌ '+e.message; }
+}
+el('f_validate').addEventListener('click',validateCard);
+modal.addEventListener('click',e=>{ if(e.target===modal) closeCfg(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeCfg(); });
+fetchStats(); start();
+</script>
+</body>
+</html>

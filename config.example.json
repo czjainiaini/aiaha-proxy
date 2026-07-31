@@ -1,0 +1,38 @@
+{
+  "_comment": "复制本文件为 config.json 后填写；或直接运行代理后在监控面板的“设置”里填写。console_token/email/password 均为敏感信息，切勿提交到 Git。",
+
+  "console_token": "",
+  "email": "",
+  "password": "",
+  "auto_login": true,
+
+  "app_id": "YOUR_BLANK_APP_ID_HERE",
+
+  "domains": [
+    "https://aiaha.xyz",
+    "https://aipornhub.ltd"
+  ],
+
+  "model": {
+    "provider": "hiagi_deepseek_bd",
+    "name": "deepseek-v3.2"
+  },
+  "completion_params": {
+    "temperature": 0.7,
+    "top_p": 1
+  },
+  "fallback_models": [
+    { "provider": "manei_deepseek", "name": "deepseek-v3.2" },
+    { "provider": "bt_deepseek", "name": "deepseek-v3.2" }
+  ],
+
+  "port": 8787,
+  "local_api_key": "",
+  "set_model_on_start": true,
+  "strip_reasoning": false,
+  "model_id_style": "verbose",
+  "hide_abnormal": false,
+  "auto_fallback": true,
+  "open_browser": true,
+  "log_level": "info"
+}

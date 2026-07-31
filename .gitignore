@@ -1,0 +1,23 @@
+# ==== 敏感配置（含 console_token / 邮箱 / 密码）——切勿提交到 Git ====
+config.json
+config.json.bak
+*.bak
+
+# ==== 依赖与日志 ====
+node_modules/
+npm-debug.log*
+yarn-error.log*
+*.log
+
+# ==== 临时 / 测试文件（下划线前缀为脚本临时产物）====
+_*.json
+_*.txt
+_*.png
+*.tmp
+
+# ==== 编辑器 / 系统 ====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
